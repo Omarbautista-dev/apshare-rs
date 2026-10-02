@@ -111,6 +111,7 @@ apshare-rs status                         # estado general
 apshare-rs devices                         # interfaces
 apshare-rs clients                         # clientes conectados ahora
 apshare-rs logs 50 hotspot                # últimos 50 logs filtrados
+apshare-rs qr                             # QR WiFi en terminal (sin mostrar la clave)
 sudo apshare-rs start --ssid MiLaptop --password clave12345
 apshare-rs stop                           # apaga y vuelves a tu wifi normal
 apshare-rs restart                        # apaga y enciende de nuevo
