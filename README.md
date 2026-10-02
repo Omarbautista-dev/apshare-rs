@@ -81,6 +81,20 @@ OK: tu WiFi soporta modo AP.
 Si dice que tu WiFi **NO** soporta modo AP, tu tarjeta no puede crear
 hotspots y el programa no te servirá en ese equipo.
 
+## Actualizar a la última versión
+
+```bash
+cargo install --git https://github.com/Omarbautista-dev/apshare-rs --force
+apshare-rs --version
+```
+
+El `--force` es obligatorio: sin él, cargo responde "ya instalado" y no
+actualiza nada. Si lo instalaste clonando el repo:
+
+```bash
+cd apshare-rs && git pull && cargo install --path . --force
+```
+
 ## Uso
 
 ### Dashboard (recomendado)
