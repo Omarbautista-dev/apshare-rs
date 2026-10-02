@@ -16,9 +16,29 @@ Log Viewer + Data Explorer.
 
 ## Instalación
 
+En un equipo nuevo, paso a paso:
+
 ```bash
+# 1. Sistema (Arch/CachyOS)
+sudo pacman -S networkmanager iw git base-devel
+# Ubuntu/Debian: sudo apt install networkmanager iw git build-essential curl
+sudo systemctl enable --now NetworkManager
+
+# 2. Rust (si no lo tienes)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+source ~/.cargo/env
+
+# 3. apshare-rs
 cargo install --git https://github.com/Omarbautista-dev/apshare-rs
-# o desde código:
+# el binario queda en ~/.cargo/bin/apshare-rs (debe estar en tu PATH)
+
+# 4. Verificar
+apshare-rs check
+```
+
+O desde código:
+
+```bash
 git clone https://github.com/Omarbautista-dev/apshare-rs
 cd apshare-rs
 cargo install --path .
