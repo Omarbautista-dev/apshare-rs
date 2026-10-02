@@ -67,6 +67,8 @@ enum Cmd {
         #[arg(default_value = "")]
         filter: String,
     },
+    /// Muestra el QR WiFi en la terminal (sin exponer la clave)
+    Qr,
     /// Verificar requisitos
     Check,
 }
@@ -228,6 +230,29 @@ fn main() {
         Cmd::Logs { n, filter } => {
             println!("{}", nm::get_logs(&n, &filter));
             0
+        }
+        Cmd::Qr => {
+            let devs = nm::get_devices().unwrap_or_default();
+            let name = nm::find_wifi(&devs).map(|w| w.name).unwrap_or_default();
+            match nm::wifi_qr_payload(&name) {
+                Some((payload, ssid, _)) => {
+                    println!("Red: {ssid} (escanea para conectar)");
+                    match nm::qr_ansi(&payload) {
+                        Some(qr) => {
+                            println!("{qr}");
+                            0
+                        }
+                        None => {
+                            eprintln!("qrencode no disponible. Instala: sudo pacman -S qrencode");
+                            1
+                        }
+                    }
+                }
+                None => {
+                    eprintln!("Sin datos (¿hotspot inactivo?).");
+                    1
+                }
+            }
         }
         Cmd::Check => cmd_check(),
     };

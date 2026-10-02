@@ -332,6 +332,92 @@ pub fn has_qr() -> bool {
     have("qrencode")
 }
 
+/// Escapa caracteres especiales del formato QR WiFi.
+fn qr_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        if matches!(c, '\\' | ';' | ',' | ':' | '"') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// Construye el payload `WIFI:T:...;S:...;P:...;;` desde `show-password`.
+/// Devuelve (payload, ssid, security). La clave nunca se muestra en claro
+/// por el panel: solo viaja dentro del QR salvo que el usuario la revele.
+pub fn wifi_qr_payload(wifi: &str) -> Option<(String, String, String)> {
+    let t = show_password(wifi);
+    if t.is_empty() {
+        return None;
+    }
+    let mut ssid = String::new();
+    let mut sec = String::new();
+    let mut pass = String::new();
+    for line in t.lines() {
+        if let Some((k, v)) = line.split_once(':') {
+            match k.trim().to_lowercase().as_str() {
+                "ssid" => ssid = v.trim().to_string(),
+                "security" => sec = v.trim().to_string(),
+                "password" => pass = v.trim().to_string(),
+                _ => {}
+            }
+        }
+    }
+    if ssid.is_empty() {
+        return None;
+    }
+    let sl = sec.to_lowercase();
+    let auth = if sl.contains("wep") {
+        "WEP"
+    } else if sl.contains("wpa") || sl.contains("wpa3") || sl == "wpa" {
+        "WPA"
+    } else {
+        "nopass"
+    };
+    let payload = if auth == "nopass" {
+        format!("WIFI:T:nopass;S:{};;", qr_escape(&ssid))
+    } else {
+        format!(
+            "WIFI:T:{auth};S:{};P:{};;",
+            qr_escape(&ssid),
+            qr_escape(&pass)
+        )
+    };
+    Some((payload, ssid, sec))
+}
+
+/// Quita secuencias ANSI (`\x1b[...m`) para que Ratatui no rompa el ancho.
+fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            for c2 in chars.by_ref() {
+                if c2.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+        } else if c != '\r' {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Renderiza el QR en la terminal con qrencode (bloques compactos, sin color).
+pub fn qr_ansi(payload: &str) -> Option<String> {
+    if !has_qr() {
+        return None;
+    }
+    let out = run("qrencode", &["-t", "ANSIUTF8", "-m", "1", payload]).ok()?;
+    if out.trim().is_empty() {
+        return None;
+    }
+    Some(strip_ansi(&out))
+}
+
 /// Últimas N líneas de NetworkManager, con filtro opcional (minúsculas).
 pub fn get_logs(n: &str, filter: &str) -> String {
     let out = match run(
@@ -467,5 +553,18 @@ mod tests {
             password: "clave12345".into(),
         };
         assert!(o.validate().is_err());
+    }
+
+    #[test]
+    fn qr_escape_specials() {
+        assert_eq!(qr_escape("Mi;Red:1"), "Mi\\;Red\\:1");
+        assert_eq!(qr_escape("a,b\\c\"d"), "a\\,b\\\\c\\\"d");
+        assert_eq!(qr_escape("OwnSB"), "OwnSB");
+    }
+
+    #[test]
+    fn strip_ansi_codes() {
+        assert_eq!(strip_ansi("\x1b[40;37;1m██\x1b[0m"), "██");
+        assert_eq!(strip_ansi("sin códigos"), "sin códigos");
     }
 }

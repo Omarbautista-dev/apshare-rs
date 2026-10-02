@@ -96,7 +96,8 @@ Teclas: `1-9` cambian de panel, `r` refresca, `q` o `Esc` sale.
 3. **Clientes**: quién está conectado (MAC, señal, velocidad, IP)
 4. **Red on/off**: `a` asistente paso a paso, `b` apagar, `c` reiniciar,
    `d` olvidar el perfil
-5. **Clave/QR**: muestra SSID y contraseña del hotspot
+5. **Clave/QR**: QR escaneable generado en el panel (requiere `qrencode`;
+   la clave queda oculta, pulsa `v` para verla) · `apshare-rs qr` lo imprime directo
 6. **Diagnóstico**: chequeo completo + botón para arreglar el firewall
 7. **Logs**: últimos eventos de NetworkManager con filtro de texto
 8. **Config**: ver y cambiar el perfil guardado

@@ -127,6 +127,7 @@ struct App {
     log_filter: String,
     logs_text: String,
     full_config: String,
+    reveal: bool,
     msg: String,
     data: Data,
     form: Option<Form>,
@@ -417,17 +418,50 @@ fn render_red(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
 }
 
 fn render_clave(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
-    let t = nm::show_password(wifi_name(&app.data));
-    let mut lines = if t.is_empty() {
-        vec![Line::from(Span::styled("Sin datos (¿hotspot inactivo?).", Style::default().fg(Color::Yellow)))]
-    } else {
-        t.lines().map(|l| Line::from(l.to_string())).collect()
-    };
-    lines.push(Line::from(""));
-    if nm::has_qr() {
-        lines.push(Line::from("QR: nmcli device wifi show-password | qrencode -t ANSIUTF8"));
-    } else {
-        lines.push(Line::from("QR: instala qrencode → sudo pacman -S qrencode"));
+    let mut lines = Vec::new();
+    match nm::wifi_qr_payload(wifi_name(&app.data)) {
+        None => lines.push(Line::from(Span::styled(
+            "Sin datos (¿hotspot inactivo?).",
+            Style::default().fg(Color::Yellow),
+        ))),
+        Some((payload, ssid, sec)) => {
+            let sec_s = if sec.is_empty() { "?" } else { sec.as_str() };
+            lines.push(Line::from(vec![
+                Span::raw("Red: "),
+                Span::styled(ssid, Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(format!(" · {sec_s} · escanea para conectar")),
+            ]));
+            lines.push(Line::from(""));
+            if nm::has_qr() {
+                match nm::qr_ansi(&payload) {
+                    Some(qr) => {
+                        for l in qr.lines() {
+                            lines.push(Line::from(l.to_string()));
+                        }
+                    }
+                    None => lines.push(Line::from("No se pudo generar el QR.")),
+                }
+            } else {
+                lines.push(Line::from(
+                    "Instala qrencode para ver el QR aquí: sudo pacman -S qrencode",
+                ));
+            }
+            lines.push(Line::from(""));
+            if app.reveal {
+                for l in nm::show_password(wifi_name(&app.data)).lines() {
+                    lines.push(Line::from(l.to_string()));
+                }
+                lines.push(Line::from(Span::styled(
+                    "v) ocultar clave",
+                    Style::default().fg(Color::DarkGray),
+                )));
+            } else {
+                lines.push(Line::from(Span::styled(
+                    "Clave oculta · v) mostrar clave",
+                    Style::default().fg(Color::DarkGray),
+                )));
+            }
+        }
     }
     f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }), area);
 }
@@ -639,6 +673,7 @@ fn main_loop(term: &mut Terminal<CrosstermBackend<io::Stdout>>) -> i32 {
         log_filter: String::new(),
         logs_text: String::new(),
         full_config: String::new(),
+        reveal: false,
         msg: String::new(),
         data: load_data("Hotspot"),
         form: None,
@@ -849,6 +884,10 @@ fn handle_section_key(app: &mut App, c: char) {
             }
             _ => {}
         },
+        Section::Clave if c == 'v' => {
+            app.reveal = !app.reveal;
+        }
+        Section::Clave => {}
         Section::Diagnostico if c == 'f' => {
             app.confirm = Some(Confirm {
                 text: "¿Activar masquerade de firewalld?".into(),
