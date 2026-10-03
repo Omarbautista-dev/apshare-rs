@@ -650,12 +650,17 @@ pub fn run_tui() -> i32 {
         eprintln!("ERROR: {e}");
         return 1;
     }
+    // Sudo se autentica AQUÍ, en terminal normal: escribes tu contraseña
+    // una vez (si hace falta). Dentro de la TUI sudo nunca pregunta (-n);
+    // si el permiso expira, se avisa en vez de romper el dibujo.
+    nm::set_noninteractive();
+    let sudo_ok = nm::preauth_sudo();
     enable_raw_mode().expect("raw mode");
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen).expect("alt screen");
     let backend = CrosstermBackend::new(stdout);
     let mut term = Terminal::new(backend).expect("terminal");
-    let code = main_loop(&mut term);
+    let code = main_loop(&mut term, sudo_ok);
     disable_raw_mode().ok();
     execute!(term.backend_mut(), LeaveAlternateScreen).ok();
     code
@@ -665,7 +670,7 @@ fn refresh(app: &mut App) {
     app.data = load_data(&app.con_name);
 }
 
-fn main_loop(term: &mut Terminal<CrosstermBackend<io::Stdout>>) -> i32 {
+fn main_loop(term: &mut Terminal<CrosstermBackend<io::Stdout>>, sudo_ok: bool) -> i32 {
     let mut app = App {
         section: Section::Estado,
         con_name: "Hotspot".into(),
@@ -674,7 +679,11 @@ fn main_loop(term: &mut Terminal<CrosstermBackend<io::Stdout>>) -> i32 {
         logs_text: String::new(),
         full_config: String::new(),
         reveal: false,
-        msg: String::new(),
+        msg: if sudo_ok {
+            String::new()
+        } else {
+            "Sin sudo: acciones de red bloqueadas. Sal con q, ejecuta `sudo -v` y reingresa.".into()
+        },
         data: load_data("Hotspot"),
         form: None,
         confirm: None,
@@ -814,6 +823,9 @@ fn submit_form(app: &mut App, form: Form) {
 }
 
 fn apply_confirm(app: &mut App, kind: ConfirmKind) {
+    if !guard_sudo(app) {
+        return;
+    }
     match kind {
         ConfirmKind::Create => {
             if let Some(o) = app.pending.take() {
@@ -837,6 +849,16 @@ fn apply_confirm(app: &mut App, kind: ConfirmKind) {
     }
 }
 
+/// Verifica permiso sudo vigente sin pedir nada. Si falló, deja mensaje
+/// claro en vez de lanzar un `sudo` que pintaría su prompt sobre la TUI.
+fn guard_sudo(app: &mut App) -> bool {
+    if nm::sudo_alive() {
+        return true;
+    }
+    app.msg = "Sin permiso sudo (expiró o denegado). Sal con q, ejecuta `sudo -v` y reingresa.".into();
+    false
+}
+
 fn single_form(title: &'static str, label: &'static str, def: &str, action: FormAction) -> Form {
     Form {
         title,
@@ -851,14 +873,24 @@ fn handle_section_key(app: &mut App, c: char) {
     match app.section {
         Section::Red => match c {
             'a' => app.form = Some(wizard_form(wifi_name(&app.data), &app.con_name.clone())),
-            'b' => match nm::stop_hotspot(&app.con_name) {
-                Ok(_) => app.msg = "Hotspot apagado.".into(),
-                Err(e) => app.msg = format!("ERROR: {e}"),
-            },
-            'c' => match nm::restart_hotspot(&app.con_name) {
-                Ok(_) => app.msg = "Hotspot reiniciado.".into(),
-                Err(e) => app.msg = format!("ERROR: {e}"),
-            },
+            'b' => {
+                if !guard_sudo(app) {
+                    return;
+                }
+                match nm::stop_hotspot(&app.con_name) {
+                    Ok(_) => app.msg = "Hotspot apagado.".into(),
+                    Err(e) => app.msg = format!("ERROR: {e}"),
+                }
+            }
+            'c' => {
+                if !guard_sudo(app) {
+                    return;
+                }
+                match nm::restart_hotspot(&app.con_name) {
+                    Ok(_) => app.msg = "Hotspot reiniciado.".into(),
+                    Err(e) => app.msg = format!("ERROR: {e}"),
+                }
+            }
             'd' => {
                 app.confirm = Some(Confirm {
                     text: format!("¿Eliminar el perfil '{}'?", app.con_name),

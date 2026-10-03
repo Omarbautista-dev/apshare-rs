@@ -3,6 +3,27 @@
 
 use std::collections::HashMap;
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Cuando está activo, `sudo` se invoca con `-n` (nunca pide contraseña
+/// dentro de la TUI, donde el prompt rompería el dibujo). La TUI lo activa
+/// al inicio tras autenticar con `sudo -v` en modo normal.
+static NONINTERACTIVE: AtomicBool = AtomicBool::new(false);
+
+pub fn set_noninteractive() {
+    NONINTERACTIVE.store(true, Ordering::Relaxed);
+}
+
+/// Pide la contraseña de sudo UNA vez en terminal normal (fuera de la TUI).
+/// Devuelve true si sudo quedó habilitado (con o sin contraseña).
+pub fn preauth_sudo() -> bool {
+    run("sudo", &["-v"]).is_ok()
+}
+
+/// ¿Sigue vigente el timestamp de sudo? (sin pedir nada).
+pub fn sudo_alive() -> bool {
+    run("sudo", &["-n", "true"]).is_ok()
+}
 
 /// Ejecuta un binario y devuelve stdout (recorta). En error devuelve
 /// stdout+stderr junto al error.
@@ -37,12 +58,19 @@ fn have(bin: &str) -> bool {
 }
 
 /// Ejecuta nmcli, con sudo si no somos root y la operación lo requiere.
+/// En modo no-interactivo (TUI) usa `sudo -n` para fallar limpio en vez
+/// de pintar el prompt de contraseña sobre la interfaz.
 pub fn run_nm(needs_root: bool, args: &[&str]) -> Result<String, String> {
     let is_root = libc_geteuid() == 0;
     if needs_root && !is_root {
+        if NONINTERACTIVE.load(Ordering::Relaxed) {
+            let mut full = vec!["-n", "nmcli"];
+            full.extend_from_slice(args);
+            return run("sudo", &full);
+        }
         let mut full = vec!["nmcli"];
         full.extend_from_slice(args);
-        return run("sudo", &full);
+        return run("sudo", full.as_slice());
     }
     run("nmcli", args)
 }
@@ -460,8 +488,18 @@ pub fn fix_masquerade() -> Result<String, String> {
     if !have("firewall-cmd") {
         return Err("firewall-cmd no disponible".into());
     }
-    let a = run("sudo", &["firewall-cmd", "--add-masquerade", "--permanent"])?;
-    let b = run("sudo", &["firewall-cmd", "--reload"])?;
+    // En la TUI nunca se pide contraseña a mitad del dibujo.
+    let pre: &[&str] = if NONINTERACTIVE.load(Ordering::Relaxed) {
+        &["-n"]
+    } else {
+        &[]
+    };
+    let mut a1 = pre.to_vec();
+    a1.extend(["firewall-cmd", "--add-masquerade", "--permanent"]);
+    let a = run("sudo", &a1)?;
+    let mut a2 = pre.to_vec();
+    a2.extend(["firewall-cmd", "--reload"]);
+    let b = run("sudo", &a2)?;
     Ok(format!("{a}\n{b}"))
 }
 

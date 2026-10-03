@@ -137,6 +137,12 @@ apshare-rs forget Hotspot                 # borra el perfil guardado
 
 ## Problemas comunes
 
+**Al abrir la TUI pide mi contraseña una vez.**
+Normal: la pide *antes* de entrar al dashboard para que las acciones
+(iniciar, apagar, reiniciar) no te la pidan a mitad y rompan la pantalla.
+Si el permiso expira tras ~15 min sin usarlo, la TUI te avisa en la barra
+de estado: sal con `q`, ejecuta `sudo -v` y vuelve a entrar.
+
 **Clientes conectan pero sin internet.**
 Casi siempre es el firewall bloqueando el NAT. En el panel 6
 (Diagnóstico) pulsa `f` para arreglarlo, o manual:
